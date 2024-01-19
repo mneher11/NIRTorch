@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Callable, Optional, Sequence
+from typing import Any, Callable, Optional, Sequence, List, Type
 
 import nir
 import numpy as np
@@ -16,6 +16,7 @@ def extract_nir_graph(
     ignore_submodules_of=None,
     model_fwd_args=[],
     ignore_dims: Optional[Sequence[int]] = None,
+    ignore_types: List[Type] = []
 ) -> nir.NIRNode:
     """Given a `model`, generate an NIR representation using the specified `model_map`.
 
@@ -48,6 +49,10 @@ def extract_nir_graph(
     torch_graph = extract_torch_graph(
         model, sample_data=sample_data, model_name=model_name, model_args=model_fwd_args
     ).ignore_tensors()
+
+    # Ignore selected nodes
+    for type in ignore_types:
+        torch_graph = torch_graph.ignore_nodes(type)
 
     if ignore_submodules_of is not None:
         torch_graph = torch_graph.ignore_submodules_of(ignore_submodules_of)
