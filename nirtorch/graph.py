@@ -182,6 +182,10 @@ class TorchGraph:
             return
         if self._is_mod_and_not_in_module_names(destination):
             return
+        if not isinstance(source, (torch.Tensor, nn.Module)):
+            return
+        if not isinstance(destination, (torch.Tensor, nn.Module)):
+            return
 
         if source is None or destination is None:
             return  # Stateful models may have Nones

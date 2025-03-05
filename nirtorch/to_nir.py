@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Callable, Optional, Sequence
+from typing import Any, Callable, Optional, Sequence, List, Type
 import warnings
 
 import nir
@@ -17,6 +17,7 @@ def extract_nir_graph(
     ignore_submodules_of=None,
     model_fwd_args=[],
     ignore_dims: Optional[Sequence[int]] = None,
+    ignore_types: List[Type] = []
 ) -> nir.NIRNode:
     """
     DEPRECATED: Use `nirtorch.torch_to_nir` instead.
@@ -57,6 +58,10 @@ def extract_nir_graph(
     torch_graph = extract_torch_graph(
         model, sample_data=sample_data, model_name=model_name, model_args=model_fwd_args
     )
+
+    # Ignore selected nodes
+    for type in ignore_types:
+        torch_graph = torch_graph.ignore_nodes(type)
 
     if ignore_submodules_of is not None:
         torch_graph = torch_graph.ignore_submodules_of(ignore_submodules_of)
@@ -105,15 +110,25 @@ def extract_nir_graph(
 
         # Add edges from input, if first element
         # TODO: Replace with mapping to input(s)/output(s) of subgraph
-        if indx == 0:  # TODO:
-            keys = list(nir_nodes.keys())
-            for k1, k2 in zip(keys[:-1], keys[1:]):
-                nir_edges.append((k1, k2))
+        # FIXME:    Commented out, because this caused unintended behavior:
+        #           The graph tracer sorts its nodes alphabetically, so the
+        #           first node (with indx == 0) is generally not the first
+        #           one being executed in a forward pass!
+        # if indx == 0:  # TODO:
+        #     keys = list(nir_nodes.keys())
+        #     for k1, k2 in zip(keys[:-1], keys[1:]):
+        #         nir_edges.append((k1, k2))
+
+    # TODO: Create test cases for this
+    # Keep track of the nodes that have no incoming edges to
+    # determine which nodes should be connected to 'input'.
+    nodes_without_incoming_edges = {node.name for node in torch_graph.node_list}
 
     # Get all the edges
     for node in torch_graph.node_list:
         for destination, shape in node.outgoing_nodes.items():
             nir_edges.append((node.name, destination.name))
+            nodes_without_incoming_edges.remove(destination.name)
 
         if len(node.outgoing_nodes) == 0:
             out_name = "output"
@@ -127,6 +142,10 @@ def extract_nir_graph(
             output_node = nir.Output(out_shape)
             nir_nodes[out_name] = output_node
             nir_edges.append((node.name, out_name))
+
+    # Connect input node
+    for node_name in nodes_without_incoming_edges:
+        nir_edges.append(("input", node_name))
 
     # Remove duplicate edges
     nir_edges = list(set(nir_edges))
