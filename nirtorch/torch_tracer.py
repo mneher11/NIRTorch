@@ -1,5 +1,6 @@
 from typing import Any, Callable, Dict, Optional, Set, Tuple, Type
 import operator
+import logging
 
 import numpy as np
 
@@ -79,6 +80,7 @@ def torch_to_nir(
     ] = DEFAULT_MAP,
     type_check: bool = True,
     stateful_modules: Optional[Set[Type[torch.nn.Module]]] = None,
+    bypass_modules: Optional[Set[Type[torch.nn.Module]]] = None,
     concrete_args: Optional[Dict[str, Any]] = None,
 ) -> nir.NIRGraph:
     """
@@ -112,6 +114,9 @@ def torch_to_nir(
             (output, state) tuples. When these modules are encountered, getitem operations extracting
             index 0 (output) will be treated as signal flow, while index 1 (state) will be ignored.
             This enables tracing through modules with stateful return signatures.
+        bypass_modules (Optional[Set[Type[torch.nn.Module]]]): A set of module types that are supposed
+            to be bypassed during tracing. When any module contained in this set is encountered,
+            its predecessor nodes will directly be connected to its successor nodes.
         concrete_args (Optional[Dict[str, Any]]): A dictionary of concrete values for function arguments
             during tracing. For example, {'state': None} will treat the 'state' argument as the concrete
             value None rather than a symbolic Proxy, which can help with tracing stateful modules.
@@ -226,8 +231,17 @@ def torch_to_nir(
                 )
         elif node.op == "call_module":
             torch_module = graph_module.get_submodule(node.target)
-            nir_module = module_map[torch_module.__class__](torch_module)
-            nodes[str(node.name)] = nir_module
+            if torch_module.__class__ in module_map:
+                nir_module = module_map[torch_module.__class__](torch_module)
+                nodes[str(node.name)] = nir_module
+            elif bypass_modules is not None and torch_module.__class__ in bypass_modules:
+                    bypass_nodes.add(node)
+                    logging.info(f"Bypassing node: {torch_module.__class__}.")
+            else:
+                raise ValueError(
+                    f"Unknown module encountered: {torch_module.__class__}. "
+                    "Consider adding its type to the 'bypass_modules' set."
+                )
         elif node.op == "get_attr":
             # Bypass attribute
             bypass_nodes.add(node)
