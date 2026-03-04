@@ -303,10 +303,10 @@ def torch_to_nir(
                             "Multiple input/output types not supported yet"
                         )
 
-            # Update the input node's input_type if we found a valid type
+            # Update the input node's input_type and output_type if we found a valid type
             if first_input_type is not None:
                 node.input_type = first_input_type
-                node.output_type = first_input_type
+                node.output_type = {"output": v for v in first_input_type.values()}
 
     graph = nir.NIRGraph(nodes=nodes, edges=edges, type_check=type_check)
     return graph
